@@ -14,6 +14,7 @@ module.exports = async function (context, req) {
 
     const startDate = req.query.startDate;
     const endDate = req.query.endDate;
+    const format = req.query.format; // 'flat' returns array only (for Synapse/ADF)
 
     // Validate required parameters
     if (!startDate || !endDate) {
@@ -86,6 +87,17 @@ module.exports = async function (context, req) {
         const totalSeconds = worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0);
         const totalHours = (totalSeconds / 3600).toFixed(2);
 
+        // Flat format: return array only (for Synapse/ADF Copy Activity)
+        if (format === 'flat') {
+            context.res = {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: worklogs
+            };
+            return;
+        }
+
+        // Default: return full response with metadata
         context.res = {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
