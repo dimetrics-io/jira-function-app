@@ -4,17 +4,39 @@ const TempoService = require('./tempoService');
  * Azure Function HTTP Trigger for retrieving Tempo worklogs
  *
  * Query Parameters:
- * - startDate: Start date in YYYY-MM-DD format (required)
- * - endDate: End date in YYYY-MM-DD format (required)
+ * - month: Use 'current' to fetch worklogs from current month (optional)
+ * - startDate: Start date in YYYY-MM-DD format (required if 'month' not set)
+ * - endDate: End date in YYYY-MM-DD format (required if 'month' not set)
+ * - format: Use 'flat' to return array only (for Synapse/ADF)
  *
- * Example: GET /api/worklogs?startDate=2026-01-01&endDate=2026-01-31
+ * Examples:
+ *   GET /api/worklogs?month=current
+ *   GET /api/worklogs?startDate=2026-01-01&endDate=2026-01-31
  */
 module.exports = async function (context, req) {
     context.log('GetWorklogs function triggered');
 
-    const startDate = req.query.startDate;
-    const endDate = req.query.endDate;
+    const month = req.query.month;
+    let startDate = req.query.startDate;
+    let endDate = req.query.endDate;
     const format = req.query.format; // 'flat' returns array only (for Synapse/ADF)
+
+    // If month=current is specified, calculate current month's date range
+    if (month === 'current') {
+        const now = new Date();
+        const year = now.getFullYear();
+        const monthNum = now.getMonth(); // 0-based (0=January)
+
+        // First day of current month
+        const monthStr = String(monthNum + 1).padStart(2, '0');
+        startDate = `${year}-${monthStr}-01`;
+
+        // Last day of current month
+        const lastDay = new Date(year, monthNum + 1, 0).getDate();
+        endDate = `${year}-${monthStr}-${String(lastDay).padStart(2, '0')}`;
+
+        context.log(`Current month detected: ${startDate} to ${endDate}`);
+    }
 
     // Validate required parameters
     if (!startDate || !endDate) {
@@ -23,8 +45,11 @@ module.exports = async function (context, req) {
             headers: { 'Content-Type': 'application/json' },
             body: {
                 error: 'Missing required parameters',
-                message: 'Both startDate and endDate query parameters are required (format: YYYY-MM-DD)',
-                example: '/api/worklogs?startDate=2026-01-01&endDate=2026-01-31'
+                message: 'Either use month=current OR provide both startDate and endDate query parameters (format: YYYY-MM-DD)',
+                examples: [
+                    '/api/worklogs?month=current',
+                    '/api/worklogs?startDate=2026-01-01&endDate=2026-01-31'
+                ]
             }
         };
         return;
@@ -98,15 +123,20 @@ module.exports = async function (context, req) {
         }
 
         // Default: return full response with metadata
+        const queryInfo = {
+            startDate,
+            endDate
+        };
+        if (month === 'current') {
+            queryInfo.month = 'current';
+        }
+
         context.res = {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
             body: {
                 success: true,
-                query: {
-                    startDate,
-                    endDate
-                },
+                query: queryInfo,
                 summary: {
                     totalWorklogs: worklogs.length,
                     totalHours: parseFloat(totalHours),
